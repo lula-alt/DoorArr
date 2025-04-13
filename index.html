@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive 3D Door Model Viewer with AR capabilities">
+    <meta name="theme-color" content="#ffffff">
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <title>3D Door Model Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        model-viewer {
+            width: 100%;
+            height: 100vh;
+            --poster-color: transparent;
+            background-color: #e0e0e0;
+        }
+        .ar-button {
+            background-color: #4285f4;
+            border-radius: 4px;
+            border: none;
+            position: absolute;
+            bottom: 32px;
+            right: 32px;
+            padding: 12px 24px;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: background-color 0.3s;
+            z-index: 100;
+            color: white;
+            display: none; /* Hidden by default */
+        }
+        .ar-button:hover {
+            background-color: #3367d6;
+        }
+        @media (max-width: 768px) {
+            .ar-button {
+                bottom: 16px;
+                right: 16px;
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <model-viewer
+        ar-scale="fixed"
+        src="namdvilikari.glb"
+        ar
+        ar-modes="quick-look"
+        camera-controls="true"
+        auto-rotate="false"
+        shadow-intensity="1"
+        exposure="1"
+        environment-image="neutral"
+        interaction-prompt="none"
+        interaction-prompt-style="basic"
+        interaction-prompt-threshold="0"
+        alt="3D Door Model"
+        id="modelViewer"
+        scale="0.8 0.8 0.8"
+        camera-orbit="0deg 75deg 105%"
+        min-camera-orbit="-180deg 75deg 105%"
+        max-camera-orbit="180deg 75deg 105%"
+        disable-zoom
+        disable-pan>
+    </model-viewer>
+
+    <!-- Custom AR button outside of model-viewer -->
+    <button id="arButton" class="ar-button">View in AR</button>
+
+    <script>
+        // Get model viewer and AR button elements
+        const modelViewer = document.getElementById('modelViewer');
+        const arButton = document.getElementById('arButton');
+        
+        // Check if AR is supported
+        modelViewer.addEventListener('load', () => {
+            const arSupported = modelViewer.canActivateAR;
+            
+            // Show AR button if AR is supported
+            if (arSupported) {
+                arButton.style.display = 'block';
+            }
+        });
+
+        // Handle AR button click
+        arButton.addEventListener('click', () => {
+            modelViewer.activateAR();
+        });
+
+        // Configure AR behavior
+        modelViewer.addEventListener('ar-status', (event) => {
+            if (event.detail.status === 'session-started') {
+                // Wait a short time for the model to be placed
+                setTimeout(() => {
+                    // Allow movement but restrict rotation to Z-axis only
+                    modelViewer.setAttribute('ar-scale', 'fixed');
+                    modelViewer.setAttribute('ar-placement', 'floor');
+                    
+                    // Set up custom controls for AR
+                    modelViewer.setAttribute('interaction-prompt', 'none');
+                    modelViewer.setAttribute('interaction-prompt-style', 'none');
+                    modelViewer.setAttribute('interaction-prompt-threshold', '0');
+                    
+                    // Use WebXR for better control
+                    modelViewer.setAttribute('ar-modes', 'webxr');
+                    
+                    // Add custom event listeners for touch/mouse events
+                    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+                    document.addEventListener('mousemove', handleMouseMove);
+                }, 2000); // 2 seconds after AR starts
+            }
+        });
+
+        // Variables to track movement
+        let isMoving = false;
+        let startX = 0;
+        let startY = 0;
+        let startZ = 0;
+        let modelPosition = { x: 0, y: 0, z: 0 };
+
+        // Handle touch events for movement
+        function handleTouchMove(event) {
+            if (event.touches.length === 1) {
+                // Single touch - rotate around Z-axis
+                const touch = event.touches[0];
+                if (!isMoving) {
+                    isMoving = true;
+                    startX = touch.clientX;
+                } else {
+                    const deltaX = touch.clientX - startX;
+                    // Apply rotation only around Z-axis
+                    const rotation = deltaX * 0.5; // Adjust sensitivity
+                    modelViewer.setAttribute('rotation', `0deg 0deg ${rotation}deg`);
+                    startX = touch.clientX;
+                }
+            } else if (event.touches.length === 2) {
+                // Two touches - move in X/Y plane
+                event.preventDefault();
+                const touch1 = event.touches[0];
+                const touch2 = event.touches[1];
+                
+                if (!isMoving) {
+                    isMoving = true;
+                    startX = (touch1.clientX + touch2.clientX) / 2;
+                    startY = (touch1.clientY + touch2.clientY) / 2;
+                } else {
+                    const currentX = (touch1.clientX + touch2.clientX) / 2;
+                    const currentY = (touch1.clientY + touch2.clientY) / 2;
+                    
+                    const deltaX = currentX - startX;
+                    const deltaY = currentY - startY;
+                    
+                    // Update position
+                    modelPosition.x += deltaX * 0.01; // Adjust sensitivity
+                    modelPosition.y += deltaY * 0.01; // Adjust sensitivity
+                    
+                    // Apply position
+                    modelViewer.setAttribute('position', `${modelPosition.x}m ${modelPosition.y}m ${modelPosition.z}m`);
+                    
+                    startX = currentX;
+                    startY = currentY;
+                }
+            }
+        }
+
+        // Handle mouse events for movement
+        function handleMouseMove(event) {
+            if (event.buttons === 1) {
+                // Left mouse button - rotate around Z-axis
+                if (!isMoving) {
+                    isMoving = true;
+                    startX = event.clientX;
+                } else {
+                    const deltaX = event.clientX - startX;
+                    // Apply rotation only around Z-axis
+                    const rotation = deltaX * 0.5; // Adjust sensitivity
+                    modelViewer.setAttribute('rotation', `0deg 0deg ${rotation}deg`);
+                    startX = event.clientX;
+                }
+            } else if (event.buttons === 4) {
+                // Middle mouse button - move in X/Y plane
+                if (!isMoving) {
+                    isMoving = true;
+                    startX = event.clientX;
+                    startY = event.clientY;
+                } else {
+                    const deltaX = event.clientX - startX;
+                    const deltaY = event.clientY - startY;
+                    
+                    // Update position
+                    modelPosition.x += deltaX * 0.01; // Adjust sensitivity
+                    modelPosition.y += deltaY * 0.01; // Adjust sensitivity
+                    
+                    // Apply position
+                    modelViewer.setAttribute('position', `${modelPosition.x}m ${modelPosition.y}m ${modelPosition.z}m`);
+                    
+                    startX = event.clientX;
+                    startY = event.clientY;
+                }
+            } else {
+                isMoving = false;
+            }
+        }
+
+        // Reset movement state when touch/mouse ends
+        document.addEventListener('touchend', () => { isMoving = false; });
+        document.addEventListener('mouseup', () => { isMoving = false; });
+    </script>
+</body>
+</html>
